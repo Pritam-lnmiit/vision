@@ -7,16 +7,14 @@ import uuid
 from datetime import datetime
 import openai
 import os
-from dotenv import load_dotenv
 import pytz
 from tenacity import retry, stop_after_attempt, wait_fixed
 import subprocess
 import tempfile
 import shutil
 
-# Load environment variables
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set OpenAI API key directly
+openai.api_key = "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"
 
 # Custom JSON serializer
 def default_serializer(obj):
@@ -91,7 +89,7 @@ def initialize_state_node(state: State) -> State:
     if not isinstance(state, dict):
         state = initialize_default_state()
     if not state["messages"]:  # Only add welcome message if no prior messages
-        state["messages"].append(AIMessage(content="Hello! I'm Grok, your assistant for Skill Swap, a platform to connect and exchange skills. Learn more at https://example.com/skillswap. Press the 'Create Profile' button below to get started!"))
+        state["messages"].append(AIMessage(content="Hello! I'm Vision, your assistant for Skill Swap, a platform to connect and exchange skills. Learn more at https://example.com/skillswap. Press the 'Create Profile' button below to get started!"))
     return state
 
 # Node: Handle LLM responses
@@ -102,7 +100,7 @@ def llm_node(state: State) -> State:
     messages = state["messages"] if isinstance(state["messages"], list) else []
     query = messages[-1].content.lower() if messages and hasattr(messages[-1], 'content') else ""
     
-    context = ("You are Grok, a helpful assistant for Skill Swap, a platform to share and exchange skills. "
+    context = ("You are Vision, a helpful assistant for Skill Swap, a platform to share and exchange skills. "
                "If the user provides profile details (e.g., 'name,age,skills,...' or with keywords) after the 'Create Profile' button is pressed, "
                "parse them and confirm the details, allowing edits with 'yes'/'no'/'edit'. "
                "If the user says 'yes' or 'submit my profile', analyze the profile and generate a PDF with the details. "
@@ -129,7 +127,7 @@ def llm_node(state: State) -> State:
                 elif "experience" in part.lower():
                     profile["experience"] = part.split("experience", 1)[1].strip()
                 elif "availability" in part.lower():
-                    profile["availability"] = part.split("availability", 1)[1].stream()
+                    profile["availability"] = part.split("availability", 1)[1].strip()
                 elif "location" in part.lower():
                     profile["location"] = part.split("location", 1)[1].strip()
             
