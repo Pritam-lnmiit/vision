@@ -1,0 +1,18 @@
+langgraph
+langchain
+langchain-core
+langchain-openai
+python-dotenv
+typing-extensions
+typing-extensions==4.12.2
+pyppeteer==2.0.0
+pillow==10.4.0
+langchain_community
+sentence_transformers
+faiss-cpu
+fpdf
+fastapi>=0.115.0
+uvicorn>=0.30.0
+psycopg2-binary
+streamlit
+ openai
