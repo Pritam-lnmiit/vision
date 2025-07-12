@@ -7,14 +7,15 @@ import uuid
 from datetime import datetime
 import openai
 import os
+from dotenv import load_dotenv
 import pytz
 from tenacity import retry, stop_after_attempt, wait_fixed
-import subprocess
 import tempfile
 import shutil
 
-# Set OpenAI API key directly
-openai.api_key = "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"
+# Load environment variables
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Custom JSON serializer
 def default_serializer(obj):
@@ -40,7 +41,7 @@ def initialize_default_state() -> State:
         "pdf_content": ""
     }
 
-# Sanitize LaTeX input
+# Sanitize LaTeX input (still useful for escaping special characters)
 def escape_latex(text: str) -> str:
     if not isinstance(text, str):
         text = str(text)
@@ -61,35 +62,19 @@ def call_openai(prompt: str, context: str):
         messages=[{"role": "system", "content": context}, {"role": "user", "content": prompt}]
     )
 
-# Generate PDF from LaTeX with error handling
-def generate_pdf_from_latex(latex_content: str) -> bytes:
-    with tempfile.NamedTemporaryFile(suffix=".tex", delete=False) as tex_file:
-        tex_file.write(latex_content.encode("utf-8"))
-        tex_file_path = tex_file.name
-    
-    try:
-        # Check if pdflatex is available
-        subprocess.run(["pdflatex", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        subprocess.run(["pdflatex", "-output-directory", tempfile.gettempdir(), tex_file_path], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        pdf_path = tex_file_path.replace(".tex", ".pdf")
-        with open(pdf_path, "rb") as pdf_file:
-            pdf_content = pdf_file.read()
-        return pdf_content
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        st.error(f"Error generating PDF: {str(e)}. Please ensure TeX Live is installed and 'pdflatex' is in your system PATH. Visit https://www.tug.org/texlive/ for installation.")
-        return None
-    finally:
-        for ext in [".tex", ".aux", ".log", ".pdf"]:
-            temp_file = tex_file_path.replace(".tex", ext)
-            if os.path.exists(temp_file):
-                os.unlink(temp_file)
+# Generate text profile
+def generate_text_profile(profile, analysis):
+    content = f"User Profile\nName: {profile.get('name', 'Unknown')}\nAge: {profile.get('age', '')}\nSkills: {', '.join(profile.get('skills', []))}\nExperience: {profile.get('experience', '')}\nAvailability: {profile.get('availability', '')}\nLocation: {profile.get('location', '')}\n\nAnalysis\n{analysis}"
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as txt_file:
+        txt_file.write(content.encode("utf-8"))
+    return txt_file.name
 
 # Node: Initialize state
 def initialize_state_node(state: State) -> State:
     if not isinstance(state, dict):
         state = initialize_default_state()
     if not state["messages"]:  # Only add welcome message if no prior messages
-        state["messages"].append(AIMessage(content="Hello! I'm Vision, your assistant for Skill Swap, a platform to connect and exchange skills. Learn more at https://example.com/skillswap. Press the 'Create Profile' button below to get started!"))
+        state["messages"].append(AIMessage(content="Hello! I'm Grok, your assistant for Skill Swap, a platform to connect and exchange skills. Learn more at https://example.com/skillswap. Press the 'Create Profile' button below to get started!"))
     return state
 
 # Node: Handle LLM responses
@@ -100,10 +85,10 @@ def llm_node(state: State) -> State:
     messages = state["messages"] if isinstance(state["messages"], list) else []
     query = messages[-1].content.lower() if messages and hasattr(messages[-1], 'content') else ""
     
-    context = ("You are Vision, a helpful assistant for Skill Swap, a platform to share and exchange skills. "
-               "If the user provides profile details (e.g., 'name,age,skills,...' or with keywords) after the 'Create Profile' button is pressed, "
+    context = ("You are Grok, a helpful assistant for Skill Swap, a platform to share and exchange skills. "
+               "If the user provides profile details (e.g., 'name,age,skills,experience,availability,location' or with keywords) after the 'Create Profile' button is pressed, "
                "parse them and confirm the details, allowing edits with 'yes'/'no'/'edit'. "
-               "If the user says 'yes' or 'submit my profile', analyze the profile and generate a PDF with the details. "
+               "If the user says 'yes' or 'submit my profile', analyze the profile and generate a text file with the details. "
                "For any other input (without profile creation), respond as a general conversational AI like ChatGPT. "
                "Known skills analysis: 'Photoshop' (strength: Strong visual design skills, improvement: Learn Adobe Illustrator), "
                "'Python' (strength: Proficiency in Python for automation, improvement: Explore Django/Flask), "
@@ -113,7 +98,7 @@ def llm_node(state: State) -> State:
     response = "Sorry, an error occurred while processing your request."
     try:
         if not messages or query in ["hi", "hello"]:
-            response = "Hello! I'm Vision, your assistant for Skill Swap, a platform to connect and exchange skills. Learn more at https://example.com/skillswap. Press the 'Create Profile' button below to get started!"
+            response = "Hello! I'm Grok, your assistant for Skill Swap, a platform to connect and exchange skills. Learn more at https://example.com/skillswap. Press the 'Create Profile' button below to get started!"
         elif st.session_state.get("show_profile_form", False) and (any(kw in query for kw in ["name", "age", "skills", "experience", "availability", "location"]) or "," in query):
             parts = [p.strip() for p in query.split(",")]
             profile = {"name": "", "age": "", "skills": [], "experience": "", "availability": "", "location": ""}
@@ -127,7 +112,7 @@ def llm_node(state: State) -> State:
                 elif "experience" in part.lower():
                     profile["experience"] = part.split("experience", 1)[1].strip()
                 elif "availability" in part.lower():
-                    profile["availability"] = part.split("availability", 1)[1].strip()
+                    profile["availability"] = part.split("availability", 1)[1].stream()
                 elif "location" in part.lower():
                     profile["location"] = part.split("location", 1)[1].strip()
             
@@ -163,23 +148,10 @@ def llm_node(state: State) -> State:
             llm_response = call_openai(prompt, context)
             analysis = llm_response["choices"][0]["message"]["content"]
             state["analysis"] = analysis
-            latex_content = (r"\documentclass{article}\usepackage[utf8]{inputenc}\usepackage{geometry}"
-                             r"\geometry{a4paper, margin=1in}\usepackage{parskip}\usepackage{titlesec}"
-                             r"\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}"
-                             r"\begin{document}\section{User Profile}"
-                             r"\textbf{Name:} " + escape_latex(profile.get("name", "Unknown")) + r" \\ "
-                             r"\textbf{Age:} " + escape_latex(str(profile.get("age", ""))) + r" \\ "
-                             r"\textbf{Skills:} " + skills + r" \\ "
-                             r"\textbf{Experience:} " + escape_latex(profile.get("experience", "")) + r" \\ "
-                             r"\textbf{Availability:} " + escape_latex(profile.get("availability", "")) + r" \\ "
-                             r"\textbf{Location:} " + escape_latex(profile.get("location", "")) + r" \\ "
-                             r"\section{Analysis}" + escape_latex(analysis).replace("\n", r" \\ ") + r"\end{document}")
-            pdf_content = generate_pdf_from_latex(latex_content)
-            if pdf_content:
-                state["pdf_content"] = pdf_content
-                response = f"Profile saved. View your details in the PDF below."
-            else:
-                response = f"Profile saved. Analysis: {analysis}\nFailed to generate PDF due to missing LaTeX tools."
+            text_file_path = generate_text_profile(profile, analysis)
+            with open(text_file_path, "rb") as txt_file:
+                state["pdf_content"] = txt_file.read()  # Reuse pdf_content key for simplicity
+            response = f"Profile saved. View your details in the text file below."
         elif query == "edit" and st.session_state.get("profile_data"):
             st.session_state.show_profile_form = True
             response = "Please provide the corrected details in the format: name,age,skills,experience,availability,location."
@@ -230,16 +202,16 @@ def main():
                 st.markdown(f"<div style='background-color: #f0f0f0; padding: 10px; border-radius: 5px;'>{content}</div>", unsafe_allow_html=True)
             if isinstance(message.get("pdf_content"), bytes):
                 st.download_button(
-                    label="View PDF",
+                    label="View Text File",
                     data=message["pdf_content"],
-                    file_name="profile.pdf",
-                    mime="application/pdf"
+                    file_name="profile.txt",
+                    mime="text/plain"
                 )
 
     # Add Create Profile button
     if st.button("Create Profile") and not st.session_state.get("show_profile_form", False):
         st.session_state.show_profile_form = True
-        st.write("Please provide your profile details in the format: name,age,skills,experience,availability,location (e.g., 'pritam,24,data science,1.5 days,jaipur').")
+        st.write("Please provide your profile details in the format: name, age, skills, experience, availability, location (e.g., 'John Doe, 25, data science, 2 years, flexible, New York').")
 
     # Handle user input
     if prompt := st.chat_input("Enter your query (e.g., 'hi' or any question):"):
@@ -259,10 +231,10 @@ def main():
                 st.markdown(f"<div style='background-color: #f0f0f0; padding: 10px; border-radius: 5px;'>{content}</div>", unsafe_allow_html=True)
                 if pdf_content:
                     st.download_button(
-                        label="View PDF",
+                        label="View Text File",
                         data=pdf_content,
-                        file_name="profile.pdf",
-                        mime="application/pdf"
+                        file_name="profile.txt",
+                        mime="text/plain"
                     )
 
 if __name__ == "__main__":
